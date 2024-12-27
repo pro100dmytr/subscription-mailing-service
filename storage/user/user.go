@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"golang.org/x/crypto/bcrypt"
 	"subscription-mailing-service/internal/config"
 	"subscription-mailing-service/internal/model"
 	"subscription-mailing-service/storage/postgres"
@@ -17,7 +18,7 @@ func (s *UserStorage) Close() error {
 	return postgres.CloseConnection(s.db)
 }
 
-func NewStorage(cfg *config.Config) (*UserStorage, error) {
+func NewUserStorage(cfg *config.Config) (*UserStorage, error) {
 	db, err := postgres.OpenConnection(cfg)
 	if err != nil {
 		return nil, err
@@ -27,6 +28,12 @@ func NewStorage(cfg *config.Config) (*UserStorage, error) {
 }
 
 func (s *UserStorage) Create(ctx context.Context, user *model.User) (*model.User, error) {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+	user.Password = string(hashedPassword)
+
 	const query = `
         INSERT INTO users (first_name, last_name, login, email, password)  
         VALUES ($1, $2, $3, $4, $5)  
@@ -34,7 +41,7 @@ func (s *UserStorage) Create(ctx context.Context, user *model.User) (*model.User
     `
 
 	var id int
-	err := s.db.QueryRowContext(
+	err = s.db.QueryRowContext(
 		ctx,
 		query,
 		user.FirstName,
@@ -65,6 +72,8 @@ func (s *UserStorage) Get(ctx context.Context, id int) (*model.User, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
+
+	user.ID = id
 	return user, err
 }
 
@@ -95,6 +104,13 @@ func (s *UserStorage) GetAll(ctx context.Context) ([]*model.User, error) {
 }
 
 func (s *UserStorage) Update(ctx context.Context, user *model.User, id int) error {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	user.Password = string(hashedPassword)
+
 	const query = `UPDATE users SET first_name = $1, last_name = $2, login = $3, email = $4, password = $5 WHERE id = $6`
 	result, err := s.db.ExecContext(ctx, query, user.FirstName, user.LastName, user.Login, user.Email, user.Password, id)
 	if err != nil {
@@ -110,11 +126,26 @@ func (s *UserStorage) Update(ctx context.Context, user *model.User, id int) erro
 		return sql.ErrNoRows
 	}
 
+	user.ID = id
+
 	return nil
 }
 
 func (s *UserStorage) Delete(ctx context.Context, id int) error {
 	const query = `DELETE FROM users WHERE id = $1`
-	_, err := s.db.ExecContext(ctx, query, id)
-	return err
+	result, err := s.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }

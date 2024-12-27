@@ -34,21 +34,21 @@ func (h *Handler) GetUserID() gin.HandlerFunc {
 		userID, err := strconv.Atoi(idStr)
 
 		if err != nil {
-			h.logger.Error("Invalid user ID", slog.Any("Error", err))
-			c.JSON(http.StatusBadRequest, gin.H{"Invalid user ID": err})
+			h.logger.Error("Invalid user ID", slog.Any("Error", "Invalid user ID"))
+			c.JSON(http.StatusBadRequest, gin.H{"error": err})
 			return
 		}
 
 		user, err := h.store.Get(c.Request.Context(), userID)
 		if err != nil {
 			h.logger.Error("Error getting user", slog.Any("Error", err))
-			c.JSON(http.StatusInternalServerError, gin.H{"Error getting user": err})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
 			return
 		}
 
 		if user == nil {
 			h.logger.Error("User not found", slog.Any("Error", err))
-			c.JSON(http.StatusNotFound, gin.H{"User not found": err})
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
@@ -61,7 +61,7 @@ func (h *Handler) GetAllUsers() gin.HandlerFunc {
 		users, err := h.store.GetAll(c.Request.Context())
 		if err != nil {
 			h.logger.Error("Error getting users", slog.Any("Error", err))
-			c.JSON(http.StatusInternalServerError, gin.H{"Error getting users": err})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting users"})
 			return
 		}
 
@@ -75,14 +75,19 @@ func (h *Handler) CreateUser() gin.HandlerFunc {
 
 		if err := c.ShouldBindJSON(&user); err != nil {
 			h.logger.Error("Invalid request", slog.Any("Error", err))
-			c.JSON(http.StatusBadRequest, gin.H{"Invalid request": err})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+			return
+		}
+
+		if user.Login == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Login is required"})
 			return
 		}
 
 		createdUser, err := h.store.Create(c.Request.Context(), user)
 		if err != nil {
 			h.logger.Error("Error create user", slog.Any("Error", err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error create user": err})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error create user"})
 			return
 		}
 
@@ -96,14 +101,14 @@ func (h *Handler) UpdateUser() gin.HandlerFunc {
 		userID, err := strconv.Atoi(idStr)
 		if err != nil {
 			h.logger.Error("Invalid user ID", slog.Any("Error", err))
-			c.JSON(http.StatusBadRequest, gin.H{"Invalid user ID": err})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 			return
 		}
 
 		var user *model.User
 		if err := c.ShouldBindJSON(&user); err != nil {
 			h.logger.Error("Invalid request", slog.Any("Error", err))
-			c.JSON(http.StatusBadRequest, gin.H{"Invalid request": err})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 			return
 		}
 
@@ -115,7 +120,7 @@ func (h *Handler) UpdateUser() gin.HandlerFunc {
 				return
 			}
 			h.logger.Error("Error update user", slog.Any("Error", err))
-			c.JSON(http.StatusInternalServerError, gin.H{"Error update user": err})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error update user"})
 			return
 		}
 
@@ -129,7 +134,7 @@ func (h *Handler) DeleteUser() gin.HandlerFunc {
 		userID, err := strconv.Atoi(idStr)
 		if err != nil {
 			h.logger.Error("Invalid user ID", slog.Any("Error", err))
-			c.JSON(http.StatusBadRequest, gin.H{"Invalid user ID": err})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 			return
 		}
 
@@ -137,11 +142,11 @@ func (h *Handler) DeleteUser() gin.HandlerFunc {
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				h.logger.Error("User not found", slog.Any("Error", err))
-				c.JSON(http.StatusNotFound, gin.H{"User not found": err})
+				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 				return
 			}
 			h.logger.Error("Error delete user", slog.Any("Error", err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error delete user": err})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error delete user"})
 			return
 		}
 

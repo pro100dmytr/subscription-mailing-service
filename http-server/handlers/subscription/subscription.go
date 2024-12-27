@@ -8,23 +8,25 @@ import (
 	"net/http"
 	"strconv"
 	"subscription-mailing-service/internal/model"
-	"subscription-mailing-service/storage/subscriber"
+	subs "subscription-mailing-service/storage/subscriber"
 )
 
 type SubscriberHandler interface {
 	GetSubscriberID() gin.HandlerFunc
 	GetAllSubscribers() gin.HandlerFunc
+	GetSubscribersByLevel() gin.HandlerFunc
 	CreateSubscriber() gin.HandlerFunc
 	UpdateSubscriber() gin.HandlerFunc
+	UpdateSubscriberLevel() gin.HandlerFunc
 	DeleteSubscriber() gin.HandlerFunc
 }
 
 type Handler struct {
-	store  *subscriber.SubscriberStorage
+	store  *subs.SubscriberStorage
 	logger *slog.Logger
 }
 
-func NewHandler(store *subscriber.SubscriberStorage, logger *slog.Logger) *Handler {
+func NewHandler(store *subs.SubscriberStorage, logger *slog.Logger) *Handler {
 	return &Handler{store: store, logger: logger}
 }
 
@@ -134,5 +136,59 @@ func (h *Handler) DeleteSubscriber() gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "Subscriber deleted successfully"})
+	}
+}
+
+func (h *Handler) UpdateSubscriberLevel() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idStr := c.Param("id")
+		subscriberID, err := strconv.Atoi(idStr)
+		if err != nil {
+			h.logger.Error("Invalid subscriber ID", slog.Any("Error", err))
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid subscriber ID"})
+			return
+		}
+
+		if subscriberID <= 0 {
+			h.logger.Error("Invalid subscriber ID", slog.Any("Error", err))
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid subscriber ID"})
+			return
+		}
+
+		var subscriber *model.Subscriber
+		if err := c.ShouldBindJSON(&subscriber); err != nil {
+			h.logger.Error("Invalid request", slog.Any("Error", err))
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+			return
+		}
+
+		err = h.store.LevelUp(c.Request.Context(), subscriber, subscriberID)
+		if err != nil {
+			h.logger.Error("Error updating level subscriber", slog.Any("Error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating level subscriber"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": subscriber})
+	}
+}
+
+func (h *Handler) GetSubscribersByLevel() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		level := c.Param("lvl")
+		if level == "" {
+			h.logger.Error("Invalid level subscriber", slog.Any("Error", "Invalid level subscriber"))
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid level subscriber"})
+			return
+		}
+
+		subscribers, err := h.store.GetByLevel(c.Request.Context(), level)
+		if err != nil {
+			h.logger.Error("Error getting subscribers by level", slog.Any("Error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting subscribers by level"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": subscribers})
 	}
 }

@@ -1,35 +1,43 @@
 package config
 
+import (
+	"fmt"
+	"gopkg.in/yaml.v3"
+	"os"
+	"path/filepath"
+)
+
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
+	Server struct {
+		Port string `yaml:"port"`
+	} `yaml:"server"`
+
+	Database struct {
+		Host     string `yaml:"host"`
+		Port     string `yaml:"port"`
+		User     string `yaml:"user"`
+		Password string `yaml:"password"`
+		DBName   string `yaml:"dbname"`
+		SSLMode  string `yaml:"sslmode"`
+	} `yaml:"database"`
 }
 
-type ServerConfig struct {
-	Address string
-}
+func LoadConfig(configPath string) (*Config, error) {
+	filename, err := filepath.Abs(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid config path: %w", err)
+	}
 
-type DatabaseConfig struct {
-	Host     string `yaml:"host"`
-	Port     string `yaml:"port"`
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
-	Dbname   string `yaml:"dbname"`
-	Sslmode  string `yaml:"sslmode"`
-}
+	yamlFile, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("error reading config file: %w", err)
+	}
 
-func LoadConfig() (*Config, error) {
-	return &Config{
-		Server: ServerConfig{
-			Address: ":8080",
-		},
-		Database: DatabaseConfig{
-			Host:     "localhost",
-			Port:     "5432",
-			User:     "postgres",
-			Password: "password",
-			Dbname:   "users_db",
-			Sslmode:  "disable",
-		},
-	}, nil
+	config := &Config{}
+
+	if err = yaml.Unmarshal(yamlFile, config); err != nil {
+		return nil, fmt.Errorf("error parsing config file: %w", err)
+	}
+
+	return config, nil
 }

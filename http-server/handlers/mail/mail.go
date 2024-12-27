@@ -8,24 +8,26 @@ import (
 	"net/http"
 	"strconv"
 	"subscription-mailing-service/internal/model"
-	"subscription-mailing-service/storage/mail"
+	mail2 "subscription-mailing-service/storage/mail"
 	"time"
 )
 
 type MailHandler interface {
 	GetMailInfo() gin.HandlerFunc
 	GetAllMails() gin.HandlerFunc
+	CreateMail() gin.HandlerFunc
 	SendMail() gin.HandlerFunc
 	UpdateMail() gin.HandlerFunc
 	DeleteMail() gin.HandlerFunc
+	SearchMails() gin.HandlerFunc
 }
 
 type Handler struct {
-	store  *mail.MailStorage
+	store  *mail2.MailStorage
 	logger *slog.Logger
 }
 
-func NewHandler(store *mail.MailStorage, logger *slog.Logger) *Handler {
+func NewHandler(store *mail2.MailStorage, logger *slog.Logger) *Handler {
 	return &Handler{store: store, logger: logger}
 }
 
@@ -58,7 +60,7 @@ func (h *Handler) GetMailInfo() gin.HandlerFunc {
 
 func (h *Handler) GetAllMails() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		mails, err := h.store.GetAll(c.Request.Context()) // Вызов метода для получения всех писем из хранилища
+		mails, err := h.store.GetAll(c.Request.Context())
 		if err != nil {
 			h.logger.Error("Error getting mails", slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting mails"})
@@ -69,9 +71,30 @@ func (h *Handler) GetAllMails() gin.HandlerFunc {
 	}
 }
 
+func (h *Handler) CreateMail() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var mail *model.Mail
+
+		if err := c.ShouldBindJSON(&mail); err != nil {
+			h.logger.Error("Invalid request", slog.Any("Error", err))
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+			return
+		}
+
+		createdMail, err := h.store.Create(c.Request.Context(), mail)
+		if err != nil {
+			h.logger.Error("Error create mail", slog.Any("Error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error create mail"})
+			return
+		}
+
+		c.JSON(http.StatusOK, createdMail)
+	}
+}
+
 func (h *Handler) SendMail() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var mail model.Mail
+		var mail *model.Mail
 
 		if err := c.ShouldBindJSON(&mail); err != nil {
 			h.logger.Error("Invalid request", slog.Any("error", err))
@@ -105,7 +128,7 @@ func (h *Handler) UpdateMail() gin.HandlerFunc {
 			return
 		}
 
-		var mail model.Mail
+		var mail *model.Mail
 		if err := c.ShouldBindJSON(&mail); err != nil {
 			h.logger.Error("Invalid request", slog.Any("error", err))
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
@@ -118,7 +141,7 @@ func (h *Handler) UpdateMail() gin.HandlerFunc {
 			return
 		}
 
-		err = h.store.Update(c.Request.Context(), mailID, mail)
+		err = h.store.Update(c.Request.Context(), mail, mailID)
 		if err != nil {
 			h.logger.Error("Error updating mail", slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating mail"})
@@ -157,3 +180,17 @@ func (h *Handler) DeleteMail() gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"message": "Mail deleted successfully"})
 	}
 }
+
+//func (h *Handler) SearchMails() gin.HandlerFunc {
+//	return func(c *gin.Context) {
+//		query := c.DefaultQuery("query", "")
+//		mails, err := h.store.SearchMails(c.Request.Context(), query)
+//		if err != nil {
+//			h.logger.Error("Error searching mails", slog.Any("error", err))
+//			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error searching mails"})
+//			return
+//		}
+//
+//		c.JSON(http.StatusOK, mails)
+//	}
+//}

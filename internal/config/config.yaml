@@ -1,7 +1,10 @@
+server:
+  port: "8080"
+
 database:
   host: "localhost"
   port: "5432"
-  user: "your_user"
-  password: "your_password"
-  dbname: "your_dbname"
+  user: "postgres"
+  password: "agario007"
+  dbname: "postgres"
   sslmode: "disable"

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"subscription-mailing-service/internal/model"
-	"subscription-mailing-service/storage/message"
+	message2 "subscription-mailing-service/storage/message"
 )
 
 type MessageHandler interface {
@@ -20,11 +20,11 @@ type MessageHandler interface {
 }
 
 type Handler struct {
-	store  *message.MessageStorage
+	store  *message2.MessageStorage
 	logger *slog.Logger
 }
 
-func NewHandler(store *message.MessageStorage, logger *slog.Logger) *Handler {
+func NewHandler(store *message2.MessageStorage, logger *slog.Logger) *Handler {
 	return &Handler{store: store, logger: logger}
 }
 
@@ -43,12 +43,6 @@ func (h *Handler) GetMessageID() gin.HandlerFunc {
 		if err != nil {
 			h.logger.Error("Error getting message", slog.Any("Error", err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting message"})
-			return
-		}
-
-		if message.ID == 0 {
-			h.logger.Error("Message not found", slog.Any("Error", err))
-			c.JSON(http.StatusNotFound, gin.H{"error": "Message not found"})
 			return
 		}
 
@@ -71,7 +65,7 @@ func (h *Handler) GetAllMessages() gin.HandlerFunc {
 
 func (h *Handler) CreateMessage() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var message model.Message
+		var message *model.Message
 
 		if err := c.ShouldBindJSON(&message); err != nil {
 			h.logger.Error("Invalid request", slog.Any("Error", err))
@@ -79,15 +73,14 @@ func (h *Handler) CreateMessage() gin.HandlerFunc {
 			return
 		}
 
-		id, err := h.store.Create(c.Request.Context(), message)
+		createdMessage, err := h.store.Create(c.Request.Context(), message)
 		if err != nil {
 			h.logger.Error("Error creating message", slog.Any("Error", err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating message"})
 			return
 		}
 
-		message.ID = id
-		c.JSON(http.StatusOK, gin.H{"message": message})
+		c.JSON(http.StatusOK, gin.H{"message": createdMessage})
 	}
 }
 
@@ -101,7 +94,7 @@ func (h *Handler) UpdateMessage() gin.HandlerFunc {
 			return
 		}
 
-		var message model.Message
+		var message *model.Message
 		if err := c.ShouldBindJSON(&message); err != nil {
 			h.logger.Error("Invalid request", slog.Any("Error", err))
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})

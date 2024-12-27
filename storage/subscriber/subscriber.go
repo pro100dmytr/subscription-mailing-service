@@ -17,7 +17,7 @@ func (s *SubscriberStorage) Close() error {
 	return postgres.CloseConnection(s.db)
 }
 
-func NewStorage(cfg *config.Config) (*SubscriberStorage, error) {
+func NewSubscriberStorage(cfg *config.Config) (*SubscriberStorage, error) {
 	db, err := postgres.OpenConnection(cfg)
 	if err != nil {
 		return nil, err
@@ -29,14 +29,16 @@ func NewStorage(cfg *config.Config) (*SubscriberStorage, error) {
 func (s *SubscriberStorage) Get(ctx context.Context, id int) (*model.Subscriber, error) {
 	const query = `
 		SELECT
-		    user_id, 
+		    user_id,
 		    status_subscription,
-		    number_subscriptions, 
+		    number_subscriptions,
 		    subscription_time,
-		    subscriptions_in_row 
-		FROM 
-		    subscribers 
-		WHERE 
+		    subscriptions_in_row,
+		    subscriptions_level
+		    
+		FROM
+		    subscribers
+		WHERE
 		    id = $1
 		    `
 
@@ -47,10 +49,13 @@ func (s *SubscriberStorage) Get(ctx context.Context, id int) (*model.Subscriber,
 		&subscriber.NumberSubscriptions,
 		&subscriber.SubscriptionTime,
 		&subscriber.SubscriptionsInRow,
+		&subscriber.SubscriptionLevel,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
+
+	subscriber.ID = id
 	return subscriber, err
 }
 
@@ -58,11 +63,12 @@ func (s *SubscriberStorage) GetAll(ctx context.Context) ([]*model.Subscriber, er
 	const query = `
 		SELECT
 		    id,
-		    user_id, 
+		    user_id,
 		    status_subscription,
-		    number_subscriptions, 
-		    subscription_time, 
-		    subscriptions_in_row
+		    number_subscriptions,
+		    subscription_time,
+		    subscriptions_in_row,
+		    subscriptions_level
 		FROM
 		    subscribers
 	`
@@ -73,9 +79,9 @@ func (s *SubscriberStorage) GetAll(ctx context.Context) ([]*model.Subscriber, er
 	}
 	defer rows.Close()
 
-	var subscribers []*model.Subscriber
+	subscribers := []*model.Subscriber{}
 	for rows.Next() {
-		var subscriber model.Subscriber
+		subscriber := &model.Subscriber{}
 		if err := rows.Scan(
 			&subscriber.ID,
 			&subscriber.UserID,
@@ -83,11 +89,12 @@ func (s *SubscriberStorage) GetAll(ctx context.Context) ([]*model.Subscriber, er
 			&subscriber.NumberSubscriptions,
 			&subscriber.SubscriptionTime,
 			&subscriber.SubscriptionsInRow,
+			&subscriber.SubscriptionLevel,
 		); err != nil {
 			return nil, err
 		}
 
-		subscribers = append(subscribers, &subscriber)
+		subscribers = append(subscribers, subscriber)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -98,19 +105,19 @@ func (s *SubscriberStorage) GetAll(ctx context.Context) ([]*model.Subscriber, er
 
 func (s *SubscriberStorage) Create(ctx context.Context, subscriber *model.Subscriber) error {
 	const query = `
-        INSERT INTO 
-            subscribers
-            (
-             user_id,
-             status,
-             number_subscriptions, 
-             subscription_time, 
-             subscriptions_in_row
-             )  
-        VALUES ($1, $2, $3, $4, $5)  
-        RETURNING 
-        id
-    `
+       INSERT INTO
+           subscribers
+           (
+            user_id,
+            status_subscription,
+            number_subscriptions,
+            subscription_time,
+            subscriptions_in_row,
+            subscriptions_level
+            )
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id
+   `
 
 	var id int
 	err := s.db.QueryRowContext(
@@ -121,38 +128,42 @@ func (s *SubscriberStorage) Create(ctx context.Context, subscriber *model.Subscr
 		subscriber.NumberSubscriptions,
 		subscriber.SubscriptionTime,
 		subscriber.SubscriptionsInRow,
+		subscriber.SubscriptionLevel,
 	).Scan(&id)
 
 	if err != nil {
 		return err
 	}
 
+	subscriber.ID = id
+
 	return nil
 }
 
 func (s *SubscriberStorage) Update(ctx context.Context, subscriber *model.Subscriber, id int) error {
 	const query = `
-		UPDATE 
+		UPDATE
 		    subscribers
-		SET 
+		SET
 		    status_subscription = $1,
 		    number_subscriptions = $2,
 		    subscription_time = $3,
 		    subscriptions_in_row = $4
-		WHERE 
+		WHERE
 		    id = $5
 	`
 
 	_, err := s.db.ExecContext(
 		ctx,
 		query,
-		subscriber.UserID,
 		subscriber.StatusSubscription,
 		subscriber.NumberSubscriptions,
 		subscriber.SubscriptionTime,
 		subscriber.SubscriptionsInRow,
 		id,
 	)
+
+	subscriber.ID = id
 
 	return err
 }
@@ -164,4 +175,53 @@ func (s *SubscriberStorage) Delete(ctx context.Context, id int) error {
 
 	_, err := s.db.ExecContext(ctx, query, id)
 	return err
+}
+
+func (s *SubscriberStorage) LevelUp(ctx context.Context, subscriber *model.Subscriber, id int) error {
+	const query = `UPDATE subscribers SET subscriptions_level = $1 WHERE id = $2`
+	_, err := s.db.ExecContext(ctx, query, subscriber.SubscriptionLevel, id)
+
+	return err
+}
+
+func (s *SubscriberStorage) GetByLevel(ctx context.Context, level string) ([]*model.Subscriber, error) {
+	const query = `
+		SELECT
+		    id,
+		    user_id,
+		    status_subscription,
+		    number_subscriptions,
+		    subscription_time,
+		    subscriptions_in_row,
+		    subscriptions_level
+       FROM
+           subscribers
+       WHERE
+           subscriptions_level = $1
+           `
+
+	rows, err := s.db.QueryContext(ctx, query, level)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var subscribers []*model.Subscriber
+	for rows.Next() {
+		subscriber := &model.Subscriber{}
+		if err := rows.Scan(
+			&subscriber.ID,
+			&subscriber.UserID,
+			&subscriber.StatusSubscription,
+			&subscriber.NumberSubscriptions,
+			&subscriber.SubscriptionTime,
+			&subscriber.SubscriptionsInRow,
+			&subscriber.SubscriptionLevel,
+		); err != nil {
+			return nil, err
+		}
+		subscribers = append(subscribers, subscriber)
+	}
+
+	return subscribers, rows.Err()
 }

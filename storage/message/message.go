@@ -17,7 +17,7 @@ func (s *MessageStorage) Close() error {
 	return postgres.CloseConnection(s.db)
 }
 
-func NewStorage(cfg *config.Config) (*MessageStorage, error) {
+func NewMessageStorage(cfg *config.Config) (*MessageStorage, error) {
 	db, err := postgres.OpenConnection(cfg)
 	if err != nil {
 		return nil, err
@@ -35,6 +35,8 @@ func (s *MessageStorage) Get(ctx context.Context, id int) (*model.Message, error
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
+
+	message.ID = id
 	return message, err
 }
 
@@ -62,10 +64,10 @@ func (s *MessageStorage) GetAll(ctx context.Context) ([]*model.Message, error) {
 
 func (s *MessageStorage) Create(ctx context.Context, message *model.Message) (*model.Message, error) {
 	const query = `
-        INSERT INTO messages (message)  
-        VALUES ($1)  
-        RETURNING id
-    `
+       INSERT INTO messages (message)
+       VALUES ($1)
+       RETURNING id
+   `
 
 	var id int
 	err := s.db.QueryRowContext(
@@ -98,11 +100,26 @@ func (s *MessageStorage) Update(ctx context.Context, message *model.Message, id 
 		return sql.ErrNoRows
 	}
 
+	message.ID = id
+
 	return nil
 }
 
 func (s *MessageStorage) Delete(ctx context.Context, id int) error {
 	const query = `DELETE FROM messages WHERE id = $1`
-	_, err := s.db.ExecContext(ctx, query, id)
-	return err
+	result, err := s.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
